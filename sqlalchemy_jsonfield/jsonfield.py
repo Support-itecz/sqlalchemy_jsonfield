@@ -42,12 +42,22 @@ class JSONField(sqlalchemy.types.TypeDecorator):  # type: ignore[type-arg]  # py
     """
 
     def process_literal_param(self, value: typing.Any, dialect: Dialect) -> typing.Any:
-        """Re-use of process_bind_param.
+        """Encode value for literal SQL rendering.
+
+        Native JSON types have no literal renderer, so the returned value is used as SQL text as-is:
+        encode to JSON and quote it as a string literal, same as the string mode does.
 
         :return: encoded value if required
         :rtype: typing.Union[str, typing.Any]
         """
-        return self.process_bind_param(value, dialect)
+        if value is None or not self.__use_json(dialect):
+            return self.process_bind_param(value, dialect)
+
+        string_literal = typing.cast(
+            "typing.Callable[[str], str]",
+            dialect.type_descriptor(sqlalchemy.UnicodeText()).literal_processor(dialect),
+        )
+        return string_literal(self.__json_codec.dumps(value, ensure_ascii=not self.__enforce_unicode))
 
     impl = sqlalchemy.types.TypeEngine  # Special placeholder
     cache_ok = False  # Cache complexity due to requirement of value re-serialization and mutability
